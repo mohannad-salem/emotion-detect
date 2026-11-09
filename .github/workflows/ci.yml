@@ -1,0 +1,16 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, "milestone/**"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # TODO: replace with the real setup, lint and test commands once the stack is chosen.
+      # Until then this job passes so the workflow can be tested end to end.
+      - name: Placeholder
+        run: echo "No stack yet. Replace this step with install, lint and test commands."

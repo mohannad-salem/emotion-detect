@@ -1,0 +1,59 @@
+name: Merge reviewed PRs
+
+# Squash merges a pull request once the reviewer adds the reviewer-approved label,
+# but only when it targets a milestone/ branch and every other check has passed.
+# It never touches pull requests into main.
+# It never touches pull requests into main.
+
+on:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  actions: read
+
+jobs:
+  merge:
+    if: >-
+      github.event.label.name == 'reviewer-approved' &&
+      startsWith(github.event.pull_request.base.ref, 'milestone/')
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PR: ${{ github.event.pull_request.number }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Refuse pull requests that change .github/ (D-020)
+        run: |
+          files=$(gh pr diff "$PR" --repo "$REPO" --name-only)
+          if echo "$files" | grep -qE '^\.github/'; then
+            echo "This pull request changes files under .github/. Mohannad must review and merge it himself (D-020)."
+            exit 1
+          fi
+      - name: Wait for other checks to pass
+        run: |
+          for i in $(seq 1 60); do
+            json=$(gh pr checks "$PR" --repo "$REPO" --json name,bucket,workflow || true)
+            others=$(echo "${json:-[]}" | jq '[.[] | select(.workflow != "Merge reviewed PRs")]')
+            total=$(echo "$others" | jq 'length')
+            pending=$(echo "$others" | jq '[.[] | select(.bucket == "pending")] | length')
+            failed=$(echo "$others" | jq '[.[] | select(.bucket == "fail" or .bucket == "cancel")] | length')
+            if [ "$failed" -gt 0 ]; then echo "A check failed; not merging."; exit 1; fi
+            if [ "$total" -gt 0 ] && [ "$pending" -eq 0 ]; then echo "All checks passed."; exit 0; fi
+            sleep 30
+          done
+          echo "Timed out waiting for checks."; exit 1
+      - name: Squash merge into the milestone branch
+        run: |
+          base=$(gh pr view "$PR" --repo "$REPO" --json baseRefName -q .baseRefName)
+          case "$base" in
+            milestone/*)
+              # Explicit subject and empty body keep the squash commit free of
+              # any Co-authored-by or "Generated with" lines from the branch.
+              title=$(gh pr view "$PR" --repo "$REPO" --json title -q .title)
+              gh pr merge "$PR" --repo "$REPO" --squash --delete-branch --subject "$title (#$PR)" --body "" ;;
+            *) echo "Base is $base, not a milestone branch. Refusing."; exit 1 ;;
+          esac

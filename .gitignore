@@ -1,0 +1,15 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Personal Claude settings
+.claude/settings.local.json
+
+# OS and editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Add stack specific entries (node_modules/, dist/, __pycache__/ ...) once the stack is chosen.
